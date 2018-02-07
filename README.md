@@ -87,13 +87,13 @@ slack:
   WebhookURL: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 
 pushover:
-	APIURL: https://api.pushover.net/1/messages.json
-	APIToken: KzGDORePKggMaC0QOYAMyEEuzJnyUi
-	UserKey: e9e1495ec75826de5983cd1abc8031
+  APIURL: https://api.pushover.net/1/messages.json
+  APIToken: KzGDORePKggMaC0QOYAMyEEuzJnyUi
+  UserKey: e9e1495ec75826de5983cd1abc8031
 
 pushbullet:
-	AccessToken: <your_access_token_here>
-	Title: "DOCKER_ALERTD"
+  AccessToken: <your_access_token_here>
+  Title: "DOCKER_ALERTD"
 
 templates:
   ExistFailure:

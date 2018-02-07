@@ -104,10 +104,10 @@ templates:
     message: "{{.Name}}"
   RunningFailure:
     title: "Running check failure"
-    message: "{{.Name}}: expected running state: {{.Limit}}, current running state: {{.Usage}}"
+    message: "{{.Name}}: expected running state: {{.Expected}}, current running state: {{.Running}}"
   RunningRecovery:
     title: "Running check recovered"
-    message: "{{.Name}}: expected running state: {{.Limit}}, current running state: {{.Usage}}"
+    message: "{{.Name}}: expected running state: {{.Expected}}, current running state: {{.Running}}"
   CPUFailure:
     title: "CPU check failure"
     message: "{{.Name}}: CPU limit: {{.Limit}}, current usage: {{.Usage}}"

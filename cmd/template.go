@@ -66,7 +66,7 @@ func (t TemplateConfig) Build() (TemplateConfig, error) {
 	
 	// {{{ Running
 	if t.RunningFailure.Message == "" {
-		_, err = t.Executor.New("running-failure-message").Parse("{{.Name}}: expected running state: {{.Limit}}, current running state: {{.Usage}}")
+		_, err = t.Executor.New("running-failure-message").Parse("{{.Name}}: expected running state: {{.Expected}}, current running state: {{.Running}}")
 	} else {
 		_, err = t.Executor.New("running-failure-message").Parse(t.RunningFailure.Message)
 	}
@@ -84,7 +84,7 @@ func (t TemplateConfig) Build() (TemplateConfig, error) {
 	}
 	
 	if t.RunningRecovery.Message == "" {
-		_, err = t.Executor.New("running-recovery-message").Parse("{{.Name}}: expected running state: {{.Limit}}, current running state: {{.Usage}}")
+		_, err = t.Executor.New("running-recovery-message").Parse("{{.Name}}: expected running state: {{.Expected}}, current running state: {{.Running}}")
 	} else {
 		_, err = t.Executor.New("running-recovery-message").Parse(t.RunningRecovery.Message)
 	}

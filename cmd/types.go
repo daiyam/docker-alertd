@@ -1,45 +1,77 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
-// Evaluator evaluates a set of alerts and decides if they need to be sent
-type Evaluator interface {
-	Send(a []Alerter)
-	Evaluate()
+type Alert struct {
+	Message	string
+	Title	string
+	Error	error
 }
 
-// Alert is the struct that stores information about alerts and its methods satisfy the
+func (a *Alert) Log() {
+	if a.Title != "" {
+		log.Println(a.Title, "-", strings.Replace(a.Message, "\n", " ", -1))
+	} else {
+		log.Println(strings.Replace(a.Message, "\n", " ", -1))
+	}
+}
+
+func (a *Alert) Dump() (s string) {
+	if a.Title != "" {
+		s += a.Title + " - "
+	}
+	
+	s += strings.Replace(a.Message, "\n", " ", -1)
+	
+	if a.Error != nil {
+		s += " - " + a.Error.Error()
+	}
+	
+	return s
+}
+
+func (a *Alert) DumpEmail() (s string) {
+	if a.Title != "" {
+		s += a.Title + "\n"
+	}
+	
+	s += a.Message
+	
+	if a.Error != nil {
+		s += "\n" + a.Error.Error()
+	}
+	
+	return s
+}
+
+// AlertList is the struct that stores information about alerts and its methods satisfy the
 // Alerter interface
-type Alert struct {
-	Messages         []error
-	SubjectAddendums []string
+type AlertList struct {
+	Alerts        []Alert
 }
 
 // ShouldSend returns true if there is an alert message to be sent
-func (a *Alert) ShouldSend() bool {
-	return len(a.Messages) > 0
+func (a *AlertList) ShouldSend() bool {
+	return len(a.Alerts) > 0
 }
 
 // Evaluate will check if error should be sent and then trigger it if necessary
-func (a *Alert) Evaluate() {
+func (a *AlertList) Evaluate() {
 	if a.ShouldSend() {
 		a.Send(Config.Alerters)
 	}
 }
 
 // Len returns the length of the alert message strings
-func (a *Alert) Len() int {
-	return len(a.Messages)
+func (a *AlertList) Len() int {
+	return len(a.Alerts)
 }
 
 // Add should take in an error and wrap it
-func (a *Alert) Add(e1, e2 error, s, subAddendum string) {
+/* func (a *Alert) Add(e1, e2 error, s, subAddendum string) {
 
 	a.SubjectAddendums = append(a.SubjectAddendums, subAddendum)
 
@@ -50,10 +82,13 @@ func (a *Alert) Add(e1, e2 error, s, subAddendum string) {
 
 	err := errors.Wrap(e, s)
 	a.Messages = append(a.Messages, err)
+} */
+func (a *AlertList) Add(message string, title string, e error) {
+	a.Alerts = append(a.Alerts, Alert{Message: message, Title: title, Error: e})
 }
 
 // Concat will concat different alerts from containers together into one
-func (a *Alert) Concat(b ...*Alert) {
+/* func (a *Alert) Concat(b ...*Alert) {
 	for _, v := range b {
 		for _, msg := range v.Messages {
 			a.Messages = append(a.Messages, msg)
@@ -63,28 +98,42 @@ func (a *Alert) Concat(b ...*Alert) {
 			a.SubjectAddendums = append(a.SubjectAddendums, addendum)
 		}
 	}
+} */
+func (a *AlertList) Concat(b ...*AlertList) {
+	for _, v := range b {
+		for _, alert := range v.Alerts {
+			a.Alerts = append(a.Alerts, alert)
+		}
+	}
 }
 
 // Log prints the alert to the log
-func (a *Alert) Log() {
+func (a *AlertList) Log() {
 	log.Println("ALERT:")
-	for _, msg := range a.Messages {
-		log.Println(msg)
+	for _, alert := range a.Alerts {
+		//log.Println(a.SubjectAddendums[i], "-", msg)
+		alert.Log()
 	}
 }
 
 // Clear will reset the alert to an empty string
-func (a *Alert) Clear() {
-	a.Messages = []error{}
-	a.SubjectAddendums = []string{}
+func (a *AlertList) Clear() {
+	a.Alerts = []Alert{}
 }
 
 // Dump takes the slice of alerts and dumps them to a single string
-func (a *Alert) Dump() string {
+/* func (a *Alert) Dump() string {
 	s := ""
 	for _, v := range a.Messages {
 		s += fmt.Sprintf("%s\n\n", v.Error())
 	}
+	return s
+} */
+func (a *AlertList) Dump() (s string) {
+	for _, alert := range a.Alerts {
+		s += alert.Dump() + "\n\n"
+	}
+	
 	return s
 }
 
@@ -94,7 +143,7 @@ func (a *Alert) Dump() string {
 // [containerName]:
 // 		[alertName]:
 // 		Error: [errString]
-func (a *Alert) DumpEmail() (s string) {
+/* func (a *Alert) DumpEmail() (s string) {
 	for _, e := range a.Messages {
 		errString := e.Error()
 		splitErr := strings.SplitN(errString, ":", 3)
@@ -106,11 +155,35 @@ func (a *Alert) DumpEmail() (s string) {
 
 	}
 	return s
+} */
+func (a *AlertList) DumpEmail() (s string) {
+	for _, alert := range a.Alerts {
+		s += alert.DumpEmail() + "\n\n"
+	}
+	
+	return s
+}
+
+func (a *AlertList) Message() (s string) {
+	for _, alert := range a.Alerts {
+		s += alert.Message + " "
+	}
+	
+	return s
+}
+
+func (a *AlertList) Title() (s string) {
+	for _, alert := range a.Alerts {
+		s += alert.Title + " "
+	}
+	
+	return s
 }
 
 // Send is for sending out alerts to syslog and to alerts that are active in conf
-func (a *Alert) Send(b []Alerter) {
+func (a *AlertList) Send(b []Alerter) {
 	a.Log()
+	
 	for i := range b {
 		go func(c Alerter) {
 			err := c.Alert(a)

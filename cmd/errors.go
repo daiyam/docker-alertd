@@ -8,6 +8,7 @@ import (
 
 // these errors are for the purpose of being able to compare them later
 var (
+	ErrNil					 = errors.New("")
 	ErrEmptyConfig           = errors.New("the configuration is completely empty (check config file)")
 	ErrEmailNoSMTP           = errors.New("no email SMTP server")
 	ErrEmailNoTo             = errors.New("no email to addresses")
@@ -33,6 +34,8 @@ var (
 	ErrPushoverAPIToken      = errors.New("no pushover api token")
 	ErrPushoverUserKey       = errors.New("no pushover user key")
 	ErrPushoverAPIURL        = errors.New("no pushover api url")
+	ErrPushbulletAccessToken = errors.New("no pushbullet access token")
+	ErrPushbulletTitle		 = errors.New("no pushbullet title")
 )
 
 // ErrContainsErr returns true if the error string contains the message

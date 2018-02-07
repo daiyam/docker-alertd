@@ -1,6 +1,6 @@
 # Docker-Alertd
 
-[![Build Status](https://travis-ci.org/deltaskelta/docker-alertd.svg?branch=master)](https://travis-ci.org/deltaskelta/docker-alertd)
+[![Build Status](https://travis-ci.org/daiyam/docker-alertd.svg?branch=master)](https://travis-ci.org/daiyam/docker-alertd)
 
 ## What Does It Do?
 
@@ -17,6 +17,11 @@ usage limits have been breached.
 4. CPU Usage (as a percentage)
 5. Minimum Process running in container
 
+## Changes
+
+- add Pushbullet
+- support custom messages
+
 # Step 1: Install
 
 ### Method: Build from source
@@ -24,12 +29,10 @@ usage limits have been breached.
 Assuming that you already have `go` installed on your machine, you can just `go get` it.
 
 ```
-go get github.com/deltaskelta/docker-alertd
+go get github.com/daiyam/docker-alertd
+
+dep ensure
 ```
-
-#### If you would like to download a pre-compiled binary, head to the release downloads
-
-[latest release - precompiled binary download](https://github.com/deltaskelta/docker-alertd/releases/latest)
 
 # Step 2: Make a Configuration File
 
@@ -71,57 +74,59 @@ containers:
 
 # If email settings are present and active, then email alerts will be sent when an alert
 # is triggered.
-emailSettings:
-  active: true
+email:
   smtp: smtp.someserver.com
+  from: auto@freshpowpow.com
   password: s00p3rS33cret
   port: 587
-  from: auto@freshpowpow.com
   subject: "DOCKER_ALERTD"
   to:
     - jeff@gnarfresh.com
+
+slack:
+  WebhookURL: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+
+pushover:
+	APIURL: https://api.pushover.net/1/messages.json
+	APIToken: KzGDORePKggMaC0QOYAMyEEuzJnyUi
+	UserKey: e9e1495ec75826de5983cd1abc8031
+
+pushbullet:
+	AccessToken: <your_access_token_here>
+	Title: "DOCKER_ALERTD"
+
+templates:
+  ExistFailure:
+    title: "Existence check failure"
+    message: "{{.Name}}"
+  ExistRecovery:
+    title: "Existence check recovered"
+    message: "{{.Name}}"
+  RunningFailure:
+    title: "Running check failure"
+    message: "{{.Name}}: expected running state: {{.Limit}}, current running state: {{.Usage}}"
+  RunningRecovery:
+    title: "Running check recovered"
+    message: "{{.Name}}: expected running state: {{.Limit}}, current running state: {{.Usage}}"
+  CPUFailure:
+    title: "CPU check failure"
+    message: "{{.Name}}: CPU limit: {{.Limit}}, current usage: {{.Usage}}"
+  CPURecovery:
+    title: "CPU check recovered"
+    message: "{{.Name}}: CPU limit: {{.Limit}}, current usage: {{.Usage}}"
+  MinPIDFailure:
+    title:
+    message: "{{.Name}}: minimum PIDs: {{.Limit}}, current PIDs: {{.Usage}}"
+  MinPIDRecovery:
+    title:
+    message: "{{.Name}}: minimum PIDs: {{.Limit}}, current PIDs: {{.Usage}}"
+  MemoryFailure:
+    title: "({{.Name}}) Memory failure"
+    message: "usage: {{.Usage}}\nlimit: {{.Limit}}"
+  MemoryRecovery:
+    title: "({{.Name}}) Memory recovery"
+    message: "usage: {{.Usage}}\nlimit: {{.Limit}}"
 ```
-
-### Configuration Variables
-
-#### Containers
-
-`duration`: the duration to wait between docker engine API calls.
-
-`iterations`:  the number of iterations that docker-alertd should run (0 = run forever)
-
-`name`: the container name or ID
-
-`maxCpu`: the maximum cpu usage threshold (as a percentage), if the container uses more
-CPU, an alert will be triggered.
-
-`maxMem`: the maximum memory usage threshold (in MB). If the container uses more system
-memory than this, an alert will be triggered.
-
-`minProcs`: the minimum number of running processes (PID's) in the container. If a the
-number of running processes dips below this level (when a process fails), an alert will
-be triggered.
-
-#### Email Settings
-
-`active`: whether email settings are active or not
-
-`smtp`: the smtp server to connect to
-
-`password`: the password to use for smtp authentication
-
-`port`: the port to connect to the smtp server
-
-`from`: the email address to send from
-
-`subject`: the subject line of emails sent
-
-`to`: an array of email addresses to send the alerts to
-
-#### Slack Settings
-
-`webhookURL`: the webhookURL provided by slack after you authorize an app on a slack
-channel. See [slack apps](https://api.slack.com/apps)
 
 # Step 3: Run the program
 
@@ -156,7 +161,7 @@ background process as per your operating system.
 
 ### As A Systemd Service (for Linux systems with systemd)
 
-If you have a systemd based system then you can refer to [docker-alertd.service.example](https://github.com/deltaskelta/docker-alertd/blob/master/docker-alertd.service.example)
+If you have a systemd based system then you can refer to [docker-alertd.service.example](https://github.com/daiyam/docker-alertd/blob/master/docker-alertd.service.example)
 the example systemd service file and this [tutorial](https://www.digitalocean.com/community/tutorials/how-to-use-systemctl-to-manage-systemd-services-and-units)
 
 ### With Launchd (MacOS)
@@ -174,32 +179,17 @@ mounting the docker socket into the container which comes with security risks be
 container has access to the docker socket and therefore if it was compromised, it would
 have root access on the system [google - mounting docker socket security](https://www.google.co.kr/search?q=mounting+docker+socket+secuity).
 
-That being said if you decide it is something you want to do in development or in a
-controlled production environment, you can use the image on the docker registry.
-
-pull the image frm the registry
-
-```bash
-docker pull deltaskelta/docker-alertd
-
-#or if you want to build your own tagged image, clone the repo and run
-#docker build -t [your-tag] .
-```
-
-run the command to get a config file printed to stdout. You must save it, modify it to fit
-your needs, and then mount it into the container that will run `docker-alertd`.
-
 NOTE: `go-wrapper run` is equivalient to `docker-alertd` if the binary was installed
 normally, so all of `docker-alertd`s normal commands will follow `go-wrapper run`
 
 ```bash
-docker run --rm  deltaskelta/docker-alertd go-wrapper run initconfig --stdout
+docker run --rm  your/docker-alertd go-wrapper run initconfig --stdout
 ```
 
 and then run the app with the mounted config file and the mounted docker socket.
 
 ```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ~/.docker-aled.yaml:/root/.docker-alertd.yaml deltaskelta/docker-alertd
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ~/.docker-aled.yaml:/root/.docker-alertd.yaml your/docker-alertd
 ```
 
 ### Testing Alert Authentication

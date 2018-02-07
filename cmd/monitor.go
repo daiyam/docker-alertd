@@ -66,8 +66,8 @@ func InitCheckers(c *Conf) []AlertdContainer {
 	for _, v := range c.Containers {
 		containers = append(containers, AlertdContainer{
 			Name: v.Name,
-			Alert: &Alert{
-				Messages: []error{},
+			AlertList: &AlertList{
+				Alerts: []Alert{},
 			},
 			CPUCheck: &MetricCheck{
 				Limit:       v.MaxCPU,
@@ -89,16 +89,17 @@ func InitCheckers(c *Conf) []AlertdContainer {
 				Expected:    v.ExpectedRunning,
 				AlertActive: false,
 			},
+			Templates: &c.Templates,
 		})
 	}
 	return containers
 }
 
 // CheckContainers goes through and checks all the containers in a loop
-func CheckContainers(cnt []AlertdContainer, cli *client.Client, a *Alert) {
+func CheckContainers(cnt []AlertdContainer, cli *client.Client, a *AlertList) {
 	for _, c := range cnt {
 		// make sure we have a clean alert for this loop
-		c.Alert.Clear()
+		c.AlertList.Clear()
 
 		// handling whether the container exists, if these checks fail, the checking
 		// process should stop
@@ -108,21 +109,21 @@ func CheckContainers(cnt []AlertdContainer, cli *client.Client, a *Alert) {
 		// if an alert should be sent that means it either failed existence or running
 		// checks which means that nothing more can be checked
 		if c.ChecksShouldStop() {
-			a.Concat(c.Alert) // add the alert in the container to the main alert
+			a.Concat(c.AlertList) // add the alert in the container to the main alert
 			continue
 		}
 
 		s, err := GetStats(&c, cli)
 		c.CheckMetrics(s, err)
 
-		if c.Alert.ShouldSend() {
-			a.Concat(c.Alert)
+		if c.AlertList.ShouldSend() {
+			a.Concat(c.AlertList)
 		}
 	}
 }
 
 // Monitor contains all the calls for the main loop of the monitor
-func Monitor(c *Conf, a *Alert) {
+func Monitor(c *Conf, a *AlertList) {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		log.Fatal(err)
@@ -151,6 +152,6 @@ func Monitor(c *Conf, a *Alert) {
 // Start the main monitor loop for a set amount of iterations
 func Start(c *Conf) {
 	log.Printf("starting docker-alertd\n------------------------------")
-	a := &Alert{Messages: []error{}}
+	a := &AlertList{Alerts: []Alert{}}
 	Monitor(c, a)
 }

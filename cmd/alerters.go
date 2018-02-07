@@ -17,7 +17,7 @@ import (
 // and twitter/slack
 type Alerter interface {
 	Valid() error
-	Alert(a *Alert) error
+	Alert(a *AlertList) error
 }
 
 // Email implements the Alerter interface and sends emails
@@ -31,22 +31,9 @@ type Email struct {
 }
 
 // Alert sends an email alert
-func (e Email) Alert(a *Alert) error {
-	// alerts in string form
-	alerts := a.DumpEmail()
-
-	subject := e.Subject + ": "
-	for i := range a.SubjectAddendums {
-		// add addendums to the subject
-		subject += fmt.Sprintf("%s ", a.SubjectAddendums[i])
-		if i == 2 { // subjects cannot be too long, stop if it is at position 3
-			subject += fmt.Sprintf("...")
-		}
-	}
-
+func (e Email) Alert(a *AlertList) error {
 	// The email message formatted properly
-	formattedMsg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s\r\n",
-		e.To, subject, alerts))
+	formattedMsg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s\r\n", e.To, strings.TrimSpace(e.Subject + a.Title()), a.DumpEmail()))
 
 	// Set up authentication/address information
 	auth := smtp.PlainAuth("", e.From, e.Password, e.SMTP)
@@ -132,7 +119,7 @@ func (s Slack) Valid() error {
 }
 
 // Alert sends the alert to a slack channel
-func (s Slack) Alert(a *Alert) error {
+func (s Slack) Alert(a *AlertList) error {
 	alerts := a.Dump()
 
 	json := fmt.Sprintf("{\"text\": \"%s\"}", alerts)
@@ -185,7 +172,7 @@ func (p Pushover) Valid() error {
 }
 
 // Alert sends the alert to Pushover API
-func (p Pushover) Alert(a *Alert) error {
+func (p Pushover) Alert(a *AlertList) error {
 	alerts := a.Dump()
 
 	parsedBody := fmt.Sprintf("token=%s&user=%s&message=%s", p.APIToken, p.UserKey,
@@ -199,5 +186,65 @@ func (p Pushover) Alert(a *Alert) error {
 	defer resp.Body.Close()
 
 	log.Println("sent alert to pushover")
+	return nil
+}
+
+// Pushbullet contains all info needed to push a notification to Pushbullet api
+type Pushbullet struct {
+	AccessToken string
+	Title  string
+}
+
+// Valid returns an error if Pushbullet settings are invalid
+func (p Pushbullet) Valid() error {
+	errString := []string{}
+
+	if reflect.DeepEqual(Pushbullet{}, p) {
+		return nil // assume that Pushbullet was omitted
+	}
+
+	if p.AccessToken == "" {
+		errString = append(errString, ErrPushbulletAccessToken.Error())
+	}
+	
+	if p.Title == "" {
+		errString = append(errString, ErrPushbulletTitle.Error())
+	}
+
+	if len(errString) == 0 {
+		return nil
+	}
+
+	delimErr := strings.Join(errString, ", ")
+	err := errors.New(delimErr)
+
+	return errors.Wrap(err, "pushbullet settings validation fail")
+}
+
+// Alert sends the alert to Pushbullet API
+func (p Pushbullet) Alert(a *AlertList) error {
+	json := fmt.Sprintf("{\"body\":\"%s\",\"title\":\"%s\",\"type\":\"note\"}", strings.Replace(a.Message(), "\n", "\\n", -1), strings.TrimSpace(p.Title + a.Title()))
+	//log.Println(json)
+	
+	body := bytes.NewReader([]byte(json))
+	
+	client := &http.Client{}
+	
+	req, err := http.NewRequest("POST", "https://api.pushbullet.com/v2/pushes", body)
+	if err != nil {
+		return err
+	}
+	
+	req.Header.Add("Access-Token", p.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	
+	defer resp.Body.Close()
+
+	log.Println("sent alert to pushbullet")
 	return nil
 }

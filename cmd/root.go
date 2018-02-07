@@ -116,9 +116,11 @@ type Conf struct {
 	Email      Email
 	Slack      Slack
 	Pushover   Pushover
+	Pushbullet Pushbullet
 	Iterations uint64
 	Duration   uint64
 	Alerters   []Alerter
+	Templates  TemplateConfig
 }
 
 // ValidateEmailSettings calls valid on the Email settings and adds them to the alerters
@@ -167,6 +169,34 @@ func (c *Conf) ValidatePushoverSettings() error {
 	}
 }
 
+// ValidatePushbulletSettings validates pushover settings and adds it to the alerters
+func (c *Conf) ValidatePushbulletSettings() error {
+	err := c.Pushbullet.Valid()
+	switch {
+	case reflect.DeepEqual(Pushbullet{}, c.Pushbullet):
+		return nil // assume that pushover was omitted and not wanted
+	case err != nil:
+		return err
+	default:
+		c.Alerters = append(c.Alerters, c.Pushbullet)
+		log.Println("pushbullet alerts active")
+		return nil
+	}
+}
+
+func (c *Conf) ValidateTemplatesSettings() error {
+	var err error
+	
+	c.Templates, err = c.Templates.Build()
+	
+	switch {
+	case err != nil:
+		return err
+	default:
+		return nil
+	}
+}
+
 // Validate validates the configuration that was passed in
 func (c *Conf) Validate() error {
 	// the error to wrap and return at the end
@@ -191,7 +221,15 @@ func (c *Conf) Validate() error {
 	if err := c.ValidatePushoverSettings(); err != nil {
 		errString = append(errString, err.Error())
 	}
-
+	
+	if err := c.ValidatePushbulletSettings(); err != nil {
+		errString = append(errString, err.Error())
+	}
+	
+	if err := c.ValidateTemplatesSettings(); err != nil {
+		errString = append(errString, err.Error())
+	}
+	
 	// if the length of the string of errors is 0 then everything has completed
 	// successfully and everything is valid.
 	if len(errString) == 0 {

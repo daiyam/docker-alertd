@@ -26,6 +26,10 @@ var (
 			ShouldPrint: false,
 			Bytes:       pushover,
 		},
+		"pushbullet": &AlerterStub{
+			ShouldPrint: false,
+			Bytes:       pushbullet,
+		},
 	}
 )
 
@@ -104,8 +108,8 @@ func init() {
 	initconfigCmd.Flags().StringVarP(&dir, "directory", "d", d, "directory to place config file in")
 	initconfigCmd.Flags().BoolVar(&alerterStubs["email"].ShouldPrint, "email", false, "include email alert stub")
 	initconfigCmd.Flags().BoolVar(&alerterStubs["slack"].ShouldPrint, "slack", false, "include slack alert stub")
-	initconfigCmd.Flags().BoolVar(&alerterStubs["pushover"].ShouldPrint, "pushover", false,
-		"include pushover alert stub")
+	initconfigCmd.Flags().BoolVar(&alerterStubs["pushover"].ShouldPrint, "pushover", false, "include pushover alert stub")
+	initconfigCmd.Flags().BoolVar(&alerterStubs["pushbullet"].ShouldPrint, "pushbullet", false, "include pushbullet alert stub")
 	initconfigCmd.Flags().BoolVar(&stdout, "stdout", false, "print config to stdout")
 
 }
@@ -119,6 +123,8 @@ func shouldPrintall() bool {
 	case alerterStubs["slack"].ShouldPrint:
 		return false
 	case alerterStubs["pushover"].ShouldPrint:
+		return false
+	case alerterStubs["pushbullet"].ShouldPrint:
 		return false
 	default:
 		return true
@@ -180,4 +186,12 @@ pushover:
   ApiURL: https://some.url/
   ApiToken: your_api_token
   UserKey: your_user_key
+`)
+
+var pushbullet = []byte(`
+# You need to create a pushbullet account to use this
+# see https://pushbullet.com for more information
+pushbullet:
+  AccessToken: your_access_token
+  Subject: "DOCKER_ALERTD"
 `)

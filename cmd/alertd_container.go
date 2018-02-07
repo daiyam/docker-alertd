@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -43,7 +44,7 @@ type Checker interface {
 // which are to be run on the container.
 type AlertdContainer struct {
 	Name     string `json:"name"`
-	Alert    *Alert
+	AlertList    *AlertList
 	CPUCheck *MetricCheck
 	MemCheck *MetricCheck
 	PIDCheck *MetricCheck
@@ -51,6 +52,8 @@ type AlertdContainer struct {
 	// static checks only below...
 	ExistenceCheck *StaticCheck
 	RunningCheck   *StaticCheck
+	
+	Templates	*TemplateConfig
 }
 
 // CheckMetrics checks everything where the Limit is not 0, there is no return because the
@@ -58,7 +61,7 @@ type AlertdContainer struct {
 func (c *AlertdContainer) CheckMetrics(s *types.Stats, e error) {
 	switch {
 	case e != nil:
-		c.Alert.Add(e, nil, "Received an unknown error", "")
+		c.AlertList.Add("Received an unknown error", "", e)
 	default:
 		if c.CPUCheck.Limit != nil {
 			c.CheckCPUUsage(s)
@@ -74,7 +77,7 @@ func (c *AlertdContainer) CheckMetrics(s *types.Stats, e error) {
 
 // CheckStatics will run all of the static checks that are listed for a container.
 func (c *AlertdContainer) CheckStatics(j *types.ContainerJSON, e error) {
-	c.CheckExists(e)
+	c.CheckExist(e)
 	if j != nil && c.RunningCheck.Expected != nil {
 		c.CheckRunning(j)
 	}
@@ -90,7 +93,7 @@ func (c *AlertdContainer) ChecksShouldStop() bool {
 		return true
 	case c.RunningCheck.Expected != nil && !*c.RunningCheck.Expected:
 		return true
-	case c.Alert.ShouldSend():
+	case c.AlertList.ShouldSend():
 		return true
 	default:
 		return false
@@ -119,22 +122,39 @@ func (c *AlertdContainer) HasBecomeKnown(e error) bool {
 	return c.ExistenceCheck.AlertActive && e == nil
 }
 
-// CheckExists checks that the container exists, running or not
-func (c *AlertdContainer) CheckExists(e error) {
+// CheckExist checks that the container exists, running or not
+func (c *AlertdContainer) CheckExist(e error) {
+	var message bytes.Buffer
+	var title bytes.Buffer
+	
+	data := struct {
+		Name		string
+	}{
+		c.Name,
+	}
+	
 	switch {
 	case c.IsUnknown(e) && !c.ExistenceCheck.AlertActive:
 		// if the alert is not active I need to alert and make it active
-		c.Alert.Add(e, ErrExistCheckFail, fmt.Sprintf("%s", c.Name), ErrExistCheckFail.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "exist-failure-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "exist-failure-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
+		
 		c.ExistenceCheck.ToggleAlertActive()
 
 	case c.IsUnknown(e) && c.ExistenceCheck.AlertActive:
 		// do nothing
 	case c.HasErrored(e):
 		// if there is some other error besides an existence check error
-		c.Alert.Add(e, ErrUnknown, fmt.Sprintf("%s", c.Name), "")
+		c.AlertList.Add(fmt.Sprintf("%s", c.Name), ErrUnknown.Error(), e)
 
 	case c.HasBecomeKnown(e):
-		c.Alert.Add(ErrExistCheckRecovered, nil, fmt.Sprintf("%s", c.Name), ErrExistCheckRecovered.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "exist-recovery-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "exist-recovery-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
+		
 		c.ExistenceCheck.ToggleAlertActive()
 	default:
 		return // nothing is wrong, just keep going
@@ -149,18 +169,33 @@ func (c *AlertdContainer) ShouldAlertRunning(j *types.ContainerJSON) bool {
 
 // CheckRunning will check to see if the container is currently running or not
 func (c *AlertdContainer) CheckRunning(j *types.ContainerJSON) {
+	var message bytes.Buffer
+	var title bytes.Buffer
+	
+	data := struct {
+		Name		string
+		Expected	bool
+		Running		bool
+	}{
+		c.Name,
+		*c.RunningCheck.Expected,
+		j.State.Running,
+	}
+	
 	switch {
 	case c.ShouldAlertRunning(j) && !c.RunningCheck.AlertActive:
-		c.Alert.Add(ErrRunningCheckFail, nil, fmt.Sprintf("%s: expected running state: "+
-			"%t, current running state: %t", c.Name, *c.RunningCheck.Expected, j.State.Running),
-			ErrRunningCheckFail.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "running-failure-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "running-failure-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.RunningCheck.ToggleAlertActive()
 
 	case !c.ShouldAlertRunning(j) && c.RunningCheck.AlertActive:
-		c.Alert.Add(ErrRunningCheckRecovered, nil, fmt.Sprintf("%s: expected running state: "+
-			"%t, current running state: %t", c.Name, *c.RunningCheck.Expected, j.State.Running),
-			ErrRunningCheckRecovered.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "running-recovery-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "running-recovery-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.RunningCheck.ToggleAlertActive()
 	}
@@ -184,20 +219,36 @@ func (c *AlertdContainer) ShouldAlertCPU(u uint64) bool {
 
 // CheckCPUUsage takes care of sending the alerts if they are needed
 func (c *AlertdContainer) CheckCPUUsage(s *types.Stats) {
-
 	u := c.RealCPUUsage(s)
 	a := c.ShouldAlertCPU(u)
+	
+	var message bytes.Buffer
+	var title bytes.Buffer
+	
+	data := struct {
+		Name	string
+		Limit	uint64
+		Usage	uint64
+	}{
+		c.Name,
+		*c.CPUCheck.Limit,
+		u,
+	}
 
 	switch {
 	case a && !c.CPUCheck.AlertActive:
-		c.Alert.Add(ErrCPUCheckFail, nil, fmt.Sprintf("%s: CPU limit: %d, current usage: %d",
-			c.Name, c.CPUCheck.Limit, u), ErrCPUCheckFail.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "cpu-failure-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "cpu-failure-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.CPUCheck.ToggleAlertActive()
 
 	case !a && c.CPUCheck.AlertActive:
-		c.Alert.Add(ErrCPUCheckRecovered, nil, fmt.Sprintf("%s: CPU limit: %d, current usage %d",
-			c.Name, c.CPUCheck.Limit, u), ErrCPUCheckRecovered.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "cpu-recovery-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "cpu-recovery-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.CPUCheck.ToggleAlertActive()
 	}
@@ -212,18 +263,36 @@ func (c *AlertdContainer) ShouldAlertMinPIDS(s *types.Stats) bool {
 // returns true if alerts should be sent, and also returns the amount of running pids.
 func (c *AlertdContainer) CheckMinPids(s *types.Stats) {
 	a := c.ShouldAlertMinPIDS(s)
+	
+	var message bytes.Buffer
+	var title bytes.Buffer
+	
+	data := struct {
+		Name	string
+		Limit	uint64
+		Usage	uint64
+	}{
+		c.Name,
+		*c.PIDCheck.Limit,
+		s.PidsStats.Current,
+	}
+	
 	switch {
 	case c.PIDCheck.Limit == nil:
 		// do nothing because the check is disabled
 	case a && !c.PIDCheck.AlertActive:
-		c.Alert.Add(ErrMinPIDCheckFail, nil, fmt.Sprintf("%s: minimum PIDs: %d, current PIDs: %d",
-			c.Name, c.PIDCheck.Limit, s.PidsStats.Current), ErrMinPIDCheckFail.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "min-pid-failure-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "min-pid-failure-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.PIDCheck.ToggleAlertActive()
 
 	case !a && c.PIDCheck.AlertActive:
-		c.Alert.Add(ErrMinPIDCheckRecovered, nil, fmt.Sprintf("%s: minimum PIDs: %d, current PIDs: %d",
-			c.Name, c.PIDCheck.Limit, s.PidsStats.Current), ErrMinPIDCheckRecovered.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "min-pid-recovery-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "min-pid-recovery-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.PIDCheck.ToggleAlertActive()
 	}
@@ -245,21 +314,37 @@ func (c *AlertdContainer) ShouldAlertMemory(s *types.Stats) bool {
 // error should be sent as well as the actual memory usage
 func (c *AlertdContainer) CheckMemory(s *types.Stats) {
 
-	u := c.MemUsageMB(s)
 	a := c.ShouldAlertMemory(s)
+	
+	var message bytes.Buffer
+	var title bytes.Buffer
+	
+	data := struct {
+		Name	string
+		Limit	uint64
+		Usage	uint64
+	}{
+		c.Name,
+		*c.MemCheck.Limit,
+		c.MemUsageMB(s),
+	}
 
 	switch {
 	case c.MemCheck.Limit == nil:
 		// do nothing because the check is disabled
 	case a && !c.MemCheck.AlertActive:
-		c.Alert.Add(ErrMemCheckFail, nil, fmt.Sprintf("%s: Memory limit: %d, current usage: %d",
-			c.Name, c.MemCheck.Limit, u), ErrMemCheckFail.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "memory-failure-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "memory-failure-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.MemCheck.ToggleAlertActive()
 
 	case !a && c.MemCheck.AlertActive:
-		c.Alert.Add(ErrMemCheckRecovered, nil, fmt.Sprintf("%s: Memory limit: %d, current usage: %d",
-			c.Name, c.MemCheck.Limit, u), ErrMemCheckRecovered.Error())
+		c.Templates.Executor.ExecuteTemplate(&message, "memory-recovery-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "memory-recovery-title", data)
+		
+		c.AlertList.Add(message.String(), title.String(), nil)
 
 		c.MemCheck.ToggleAlertActive()
 	}

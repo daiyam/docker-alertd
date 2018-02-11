@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -149,9 +152,55 @@ func Monitor(c *Conf, a *AlertList) {
 	}
 }
 
+func AlertStarting(c *Conf, a *AlertList) {
+	var message bytes.Buffer
+	var title bytes.Buffer
+	
+	var data = struct{}{}
+	
+	c.Templates.Executor.ExecuteTemplate(&message, "starting-message", data)
+	c.Templates.Executor.ExecuteTemplate(&title, "starting-title", data)
+	
+	a.Add(message.String(), title.String(), nil)
+	
+	a.Evaluate()
+}
+
+func AlertStopping(c *Conf, a *AlertList) {
+	shutdown := make(chan os.Signal)
+    
+	signal.Notify(shutdown)
+	
+	go func() {
+		<-shutdown
+		
+		var message bytes.Buffer
+		var title bytes.Buffer
+		
+		var data = struct{}{}
+		
+		c.Templates.Executor.ExecuteTemplate(&message, "stopping-message", data)
+		c.Templates.Executor.ExecuteTemplate(&title, "stopping-title", data)
+		
+		a.Add(message.String(), title.String(), nil)
+		
+		a.Evaluate()
+		
+		time.Sleep(time.Duration(5000) * time.Millisecond)
+		
+		os.Exit(1)
+	}()
+}
+
 // Start the main monitor loop for a set amount of iterations
 func Start(c *Conf) {
 	log.Printf("starting docker-alertd\n------------------------------")
 	a := &AlertList{Alerts: []Alert{}}
+	
+	AlertStarting(c, a)
+	AlertStopping(c, a)
+	
+	time.Sleep(time.Duration(c.Duration) * time.Millisecond)
+	
 	Monitor(c, a)
 }

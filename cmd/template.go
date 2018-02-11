@@ -10,6 +10,8 @@ type AlertTemplate struct {
 }
 
 type TemplateConfig struct {
+	Starting				AlertTemplate
+	Stopping			AlertTemplate
 	ExistFailure		AlertTemplate
 	ExistRecovery		AlertTemplate
 	RunningFailure		AlertTemplate
@@ -25,6 +27,46 @@ type TemplateConfig struct {
 
 func (t TemplateConfig) Build() (TemplateConfig, error) {
 	var err error
+	
+	// {{{ Starting
+	if t.Starting.Message == "" {
+		_, err = t.Executor.New("starting-message").Parse("Starting")
+	} else {
+		_, err = t.Executor.New("starting-message").Parse(t.Starting.Message)
+	}
+	if err != nil {
+		return t, err
+	}
+	
+	if t.Starting.Title == "" {
+		_, err = t.Executor.New("starting-title").Parse("Starting")
+	} else {
+		_, err = t.Executor.New("starting-title").Parse(t.Starting.Title)
+	}
+	if err != nil {
+		return t, err
+	}
+	// }}}
+	
+	// {{{ Stopping
+	if t.Stopping.Message == "" {
+		_, err = t.Executor.New("stopping-message").Parse("Stopping")
+	} else {
+		_, err = t.Executor.New("stopping-message").Parse(t.Stopping.Message)
+	}
+	if err != nil {
+		return t, err
+	}
+	
+	if t.Stopping.Title == "" {
+		_, err = t.Executor.New("stopping-title").Parse("Stopping")
+	} else {
+		_, err = t.Executor.New("stopping-title").Parse(t.Stopping.Title)
+	}
+	if err != nil {
+		return t, err
+	}
+	// }}}
 	
 	// {{{ Exist
 	if t.ExistFailure.Message == "" {

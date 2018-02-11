@@ -71,34 +71,11 @@ func (a *AlertList) Len() int {
 }
 
 // Add should take in an error and wrap it
-/* func (a *Alert) Add(e1, e2 error, s, subAddendum string) {
-
-	a.SubjectAddendums = append(a.SubjectAddendums, subAddendum)
-
-	e := e1
-	if e2 != nil {
-		e = errors.Wrap(e1, e2.Error())
-	}
-
-	err := errors.Wrap(e, s)
-	a.Messages = append(a.Messages, err)
-} */
 func (a *AlertList) Add(message string, title string, e error) {
 	a.Alerts = append(a.Alerts, Alert{Message: message, Title: title, Error: e})
 }
 
 // Concat will concat different alerts from containers together into one
-/* func (a *Alert) Concat(b ...*Alert) {
-	for _, v := range b {
-		for _, msg := range v.Messages {
-			a.Messages = append(a.Messages, msg)
-		}
-
-		for _, addendum := range v.SubjectAddendums {
-			a.SubjectAddendums = append(a.SubjectAddendums, addendum)
-		}
-	}
-} */
 func (a *AlertList) Concat(b ...*AlertList) {
 	for _, v := range b {
 		for _, alert := range v.Alerts {
@@ -111,7 +88,6 @@ func (a *AlertList) Concat(b ...*AlertList) {
 func (a *AlertList) Log() {
 	log.Println("ALERT:")
 	for _, alert := range a.Alerts {
-		//log.Println(a.SubjectAddendums[i], "-", msg)
 		alert.Log()
 	}
 }
@@ -122,13 +98,6 @@ func (a *AlertList) Clear() {
 }
 
 // Dump takes the slice of alerts and dumps them to a single string
-/* func (a *Alert) Dump() string {
-	s := ""
-	for _, v := range a.Messages {
-		s += fmt.Sprintf("%s\n\n", v.Error())
-	}
-	return s
-} */
 func (a *AlertList) Dump() (s string) {
 	for _, alert := range a.Alerts {
 		s += alert.Dump() + "\n\n"
@@ -143,19 +112,6 @@ func (a *AlertList) Dump() (s string) {
 // [containerName]:
 // 		[alertName]:
 // 		Error: [errString]
-/* func (a *Alert) DumpEmail() (s string) {
-	for _, e := range a.Messages {
-		errString := e.Error()
-		splitErr := strings.SplitN(errString, ":", 3)
-
-		for _, v := range splitErr {
-			s += fmt.Sprintf("%s\n\t", v)
-		}
-		s += fmt.Sprintf("\n\n")
-
-	}
-	return s
-} */
 func (a *AlertList) DumpEmail() (s string) {
 	for _, alert := range a.Alerts {
 		s += alert.DumpEmail() + "\n\n"

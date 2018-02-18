@@ -21,6 +21,7 @@ usage limits have been breached.
 
 - add Pushbullet
 - support custom messages
+- add delay (in second) before sending the alert
 
 # Step 1: Install
 
@@ -71,6 +72,7 @@ containers:
     maxCpu: 20
     maxMem: 20
     minProcs: 4
+    delay: 30
 
 # If email settings are present and active, then email alerts will be sent when an alert
 # is triggered.

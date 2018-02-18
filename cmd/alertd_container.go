@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 )
@@ -12,6 +13,9 @@ import (
 type MetricCheck struct {
 	AlertActive bool
 	Limit       *uint64
+	MinDelay	*uint64
+	Delaying	bool
+	DelaySince	time.Time
 }
 
 // ToggleAlertActive changes the state of the alert
@@ -24,6 +28,9 @@ func (c *MetricCheck) ToggleAlertActive() {
 type StaticCheck struct {
 	AlertActive bool
 	Expected    *bool
+	MinDelay	*uint64
+	Delaying	bool
+	DelaySince	time.Time
 }
 
 // ToggleAlertActive changes the state of the alert
@@ -135,6 +142,10 @@ func (c *AlertdContainer) CheckExist(e error) {
 	
 	switch {
 	case c.IsUnknown(e) && !c.ExistenceCheck.AlertActive:
+		if c.ShouldDelayStatic(true, c.ExistenceCheck) {
+			return
+		}
+		
 		// if the alert is not active I need to alert and make it active
 		c.Templates.Executor.ExecuteTemplate(&message, "exist-failure-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "exist-failure-title", data)
@@ -150,6 +161,8 @@ func (c *AlertdContainer) CheckExist(e error) {
 		c.AlertList.Add(fmt.Sprintf("%s", c.Name), ErrUnknown.Error(), e)
 
 	case c.HasBecomeKnown(e):
+		c.ShouldDelayStatic(false, c.ExistenceCheck)
+		
 		c.Templates.Executor.ExecuteTemplate(&message, "exist-recovery-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "exist-recovery-title", data)
 		
@@ -169,6 +182,12 @@ func (c *AlertdContainer) ShouldAlertRunning(j *types.ContainerJSON) bool {
 
 // CheckRunning will check to see if the container is currently running or not
 func (c *AlertdContainer) CheckRunning(j *types.ContainerJSON) {
+	a := c.ShouldAlertRunning(j)
+	
+	if c.ShouldDelayStatic(a, c.RunningCheck) {
+		return
+	}
+	
 	var message bytes.Buffer
 	var title bytes.Buffer
 	
@@ -183,7 +202,7 @@ func (c *AlertdContainer) CheckRunning(j *types.ContainerJSON) {
 	}
 	
 	switch {
-	case c.ShouldAlertRunning(j) && !c.RunningCheck.AlertActive:
+	case a && !c.RunningCheck.AlertActive:
 		c.Templates.Executor.ExecuteTemplate(&message, "running-failure-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "running-failure-title", data)
 		
@@ -191,7 +210,7 @@ func (c *AlertdContainer) CheckRunning(j *types.ContainerJSON) {
 
 		c.RunningCheck.ToggleAlertActive()
 
-	case !c.ShouldAlertRunning(j) && c.RunningCheck.AlertActive:
+	case !a && c.RunningCheck.AlertActive:
 		c.Templates.Executor.ExecuteTemplate(&message, "running-recovery-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "running-recovery-title", data)
 		
@@ -219,8 +238,16 @@ func (c *AlertdContainer) ShouldAlertCPU(u uint64) bool {
 
 // CheckCPUUsage takes care of sending the alerts if they are needed
 func (c *AlertdContainer) CheckCPUUsage(s *types.Stats) {
+	if c.CPUCheck.Limit == nil {
+		return
+	}
+	
 	u := c.RealCPUUsage(s)
 	a := c.ShouldAlertCPU(u)
+	
+	if c.ShouldDelayMetric(a, c.CPUCheck) {
+		return
+	}
 	
 	var message bytes.Buffer
 	var title bytes.Buffer
@@ -262,7 +289,15 @@ func (c *AlertdContainer) ShouldAlertMinPIDS(s *types.Stats) bool {
 // CheckMinPids uses the min pids setting and check the number of PIDS in the container
 // returns true if alerts should be sent, and also returns the amount of running pids.
 func (c *AlertdContainer) CheckMinPids(s *types.Stats) {
+	if c.PIDCheck.Limit == nil {
+		return
+	}
+	
 	a := c.ShouldAlertMinPIDS(s)
+	
+	if c.ShouldDelayMetric(a, c.PIDCheck) {
+		return
+	}
 	
 	var message bytes.Buffer
 	var title bytes.Buffer
@@ -278,8 +313,6 @@ func (c *AlertdContainer) CheckMinPids(s *types.Stats) {
 	}
 	
 	switch {
-	case c.PIDCheck.Limit == nil:
-		// do nothing because the check is disabled
 	case a && !c.PIDCheck.AlertActive:
 		c.Templates.Executor.ExecuteTemplate(&message, "min-pid-failure-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "min-pid-failure-title", data)
@@ -313,8 +346,15 @@ func (c *AlertdContainer) ShouldAlertMemory(s *types.Stats) bool {
 // CheckMemory checks the memory used by the container in MB, returns true if an
 // error should be sent as well as the actual memory usage
 func (c *AlertdContainer) CheckMemory(s *types.Stats) {
-
+	if c.MemCheck.Limit == nil {
+		return
+	}
+	
 	a := c.ShouldAlertMemory(s)
+	
+	if c.ShouldDelayMetric(a, c.MemCheck) {
+		return
+	}
 	
 	var message bytes.Buffer
 	var title bytes.Buffer
@@ -329,18 +369,15 @@ func (c *AlertdContainer) CheckMemory(s *types.Stats) {
 		c.MemUsageMB(s),
 	}
 
-	switch {
-	case c.MemCheck.Limit == nil:
-		// do nothing because the check is disabled
-	case a && !c.MemCheck.AlertActive:
+	if a && !c.MemCheck.AlertActive {
 		c.Templates.Executor.ExecuteTemplate(&message, "memory-failure-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "memory-failure-title", data)
 		
 		c.AlertList.Add(message.String(), title.String(), nil)
-
+		
 		c.MemCheck.ToggleAlertActive()
-
-	case !a && c.MemCheck.AlertActive:
+		
+	} else if !a && c.MemCheck.AlertActive {
 		c.Templates.Executor.ExecuteTemplate(&message, "memory-recovery-message", data)
 		c.Templates.Executor.ExecuteTemplate(&title, "memory-recovery-title", data)
 		
@@ -348,4 +385,48 @@ func (c *AlertdContainer) CheckMemory(s *types.Stats) {
 
 		c.MemCheck.ToggleAlertActive()
 	}
+}
+
+func (c *AlertdContainer) ShouldDelayMetric(alert bool, metric *MetricCheck) bool {
+	if metric.MinDelay != nil {
+		if alert {
+			if !metric.Delaying {
+				metric.Delaying = true
+				metric.DelaySince = time.Now()
+				return true
+			
+			} else if uint64(time.Now().Sub(metric.DelaySince).Seconds()) < *metric.MinDelay {
+				return true
+			}
+		
+		} else {
+			if metric.Delaying {
+				metric.Delaying = false
+			}
+		}
+	}
+	
+	return false
+}
+
+func (c *AlertdContainer) ShouldDelayStatic(alert bool, static *StaticCheck) bool {
+	if static.MinDelay != nil {
+		if alert {
+			if !static.Delaying {
+				static.Delaying = true
+				static.DelaySince = time.Now()
+				return true
+			
+			} else if uint64(time.Now().Sub(static.DelaySince).Seconds()) < *static.MinDelay {
+				return true
+			}
+		
+		} else {
+			if static.Delaying {
+				static.Delaying = false
+			}
+		}
+	}
+	
+	return false
 }

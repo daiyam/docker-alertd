@@ -108,6 +108,7 @@ type Container struct {
 	MaxMem          *uint64
 	MinProcs        *uint64
 	ExpectedRunning *bool
+	Delay			*uint64
 }
 
 // Conf struct that combines containers and email settings structs

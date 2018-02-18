@@ -10,7 +10,7 @@ type AlertTemplate struct {
 }
 
 type TemplateConfig struct {
-	Starting				AlertTemplate
+	Starting			AlertTemplate
 	Stopping			AlertTemplate
 	ExistFailure		AlertTemplate
 	ExistRecovery		AlertTemplate

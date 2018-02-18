@@ -154,6 +154,7 @@ containers:
     maxCpu: 20
     maxMem: 20
     minProcs: 4
+    delay: 30
 
 ## ALERTERS...
 ## If any of the below alerters are present, alerts will be sent through the proper 
